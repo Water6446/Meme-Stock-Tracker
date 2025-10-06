@@ -24,7 +24,8 @@ except ImportError:
 
     
 
-DEFAULT_PROMPT_TEMPLATE = "Pre-open {today_date}, list 10 likely meme stocks today. Browse, cite, and rank by buzz + squeeze risk + fresh catalyst. Give a compact table: Ticker, pre-mkt move/vol, short interest %, days-to-cover, borrow fee/utilization, options vol & put/call, retail-mention trend (high, medium or low), catalyst note, risk flags. Then 3 runners-up and 3 bullet ‘watch items’ (levels/halts). Finally, at the end of the entire response, provide the data from the main 10-stock table in a raw, comma-separated values (CSV) format inside a code block. Include the header row."
+
+DEFAULT_PROMPT_TEMPLATE = "Pre-open {today_date}, list 10 likely meme stocks today. Browse, cite, and rank by buzz + squeeze risk + fresh catalyst. Give a compact table: Date, Ticker, pre-mkt move/vol, short interest %, days-to-cover, borrow fee/utilization, options vol & put/call, retail-mention trend (high or medium or low), catalyst note, risk flags. Then list 3 runners-up and 3 bulleted watch items(levels/halts). Finally, at the end of the entire response, provide the data from the main 10-stock table in a raw, comma-separated values (CSV) format inside a code block. Include the header row."
 DEFAULT_MODEL = "gemini-2.5-pro"
 DEFAULT_SCHEDULE_TIME_UTC = "13:25"
 
