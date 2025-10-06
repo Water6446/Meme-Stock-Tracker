@@ -22,12 +22,9 @@ except ImportError:
     print("If you are on Python < 3.9, run: pip install tzdata")
     ZoneInfo = None
 
-DEFAULT_PROMPT_TEMPLATE = (
-    "Pre-open {today_date}, list 10 likely meme stocks today. Browse, cite, and rank by buzz + "
-    "squeeze risk + fresh catalyst. Give a compact table: Ticker, pre-mkt move/vol, short interest %, "
-    "days-to-cover, borrow fee/utilization, options vol & put/call, retail-mention trend, catalyst note, "
-    "risk flags. Then 3 runners-up and 3 bullet ‘watch items’ (levels/halts)."
-)
+    
+
+DEFAULT_PROMPT_TEMPLATE = "Pre-open {today_date}, list 10 likely meme stocks today. Browse, cite, and rank by buzz + squeeze risk + fresh catalyst. Give a compact table: Ticker, pre-mkt move/vol, short interest %, days-to-cover, borrow fee/utilization, options vol & put/call, retail-mention trend (high, medium or low), catalyst note, risk flags. Then 3 runners-up and 3 bullet ‘watch items’ (levels/halts). Finally, at the end of the entire response, provide the data from the main 10-stock table in a raw, comma-separated values (CSV) format inside a code block. Include the header row."
 DEFAULT_MODEL = "gemini-2.5-pro"
 DEFAULT_SCHEDULE_TIME_UTC = "13:25"
 
@@ -238,7 +235,7 @@ def schedule_task(pause_on_completion: bool = True) -> None:
         local_time_str = local_time.strftime('%H:%M')
 
         executable_path = sys.executable
-        task_name = "DailyMemeStockReport"
+        task_name = "DailyStockReport"
 
         if getattr(sys, 'frozen', False):
             task_action = f'"{executable_path}" run'
@@ -284,9 +281,9 @@ def _call_gemini_api(client, gemini_model, prompt, config):
         config=config,
     )
 
-def get_meme_stocks() -> None:
+def get_stocks() -> None:
     """
-    Connects to the Google Gemini API to get a list of likely meme stocks.
+    Connects to the Google Gemini API to get a list of likely stocks.
     Saves the report to a file and optionally displays it in a GUI window.
     """
     try:
@@ -310,7 +307,7 @@ def get_meme_stocks() -> None:
 
         prompt = prompt_template.format(today_date=today_date)
 
-        print(f"\nGenerating meme stock report for {today_date} using model '{gemini_model}'...")
+        print(f"\nGenerating stock report for {today_date} using model '{gemini_model}'...")
 
         client = genai.Client(api_key=api_key)
         grounding_tool = types.Tool(google_search=types.GoogleSearch())
@@ -321,10 +318,13 @@ def get_meme_stocks() -> None:
 
         output_text = response.text
 
-        output_file_path = os.path.join(get_base_path(), f"{today_date}_MemeStock.txt")
+        output_file_path = os.path.join(get_base_path(), f"{today_date}_Stock.txt")
         with open(output_file_path, "w", encoding="utf-8") as file:
             file.write(output_text)
         print(f"SUCCESS: Report saved to '{output_file_path}'")
+
+        # Extract and save the CSV portion if present
+        save_csv_from_output(output_text, get_base_path(), f"{today_date}_CSVStock")
 
         show_gui = get_config_value('Settings', 'SHOW_GUI', fallback='true').lower() == 'true'
         if show_gui:
@@ -339,6 +339,68 @@ def get_meme_stocks() -> None:
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
+def save_csv_from_output(output_text: str, output_dir: str, base_filename: str, master_filename: str = "MasterStock.csv") -> None:
+    """
+    Extracts the CSV portion from the output text, saves it as a daily .csv file,
+    and appends it to a master .csv file without duplicating headers.
+
+    Args:
+        output_text (str): The full output text containing the CSV data.
+        output_dir (str): The directory where the CSV files will be saved.
+        base_filename (str): The base filename (without extension) for the daily CSV file.
+        master_filename (str): The filename for the master CSV file (default: "MasterStock.csv").
+    """
+    # Find the start of the CSV section
+    csv_marker = "```csv"
+    csv_start = output_text.find(csv_marker)
+
+    if csv_start == -1:
+        print("No CSV section found in the output text.")
+        return
+
+    # Extract the CSV portion and trim at the ending "```" marker
+    csv_content = output_text[csv_start + len(csv_marker):].strip()
+    csv_end = csv_content.find("```")
+    if csv_end != -1:
+        csv_content = csv_content[:csv_end].strip()
+
+    # Split the CSV content into lines
+    csv_lines = csv_content.splitlines()
+    if not csv_lines:
+        print("No valid CSV content found.")
+        return
+
+    # Extract headers and data
+    headers = csv_lines[0]
+    data_lines = csv_lines[1:]
+
+    # Define the daily CSV file path
+    daily_csv_path = os.path.join(output_dir, f"{base_filename}.csv")
+
+    try:
+        # Save the daily CSV content to a file
+        with open(daily_csv_path, "w", encoding="utf-8") as daily_csv_file:
+            daily_csv_file.write(csv_content)
+        print(f"Daily CSV file saved successfully at: {daily_csv_path}")
+
+        # Define the master CSV file path
+        master_csv_path = os.path.join(output_dir, master_filename)
+
+        # Check if the master file exists
+        master_file_exists = os.path.exists(master_csv_path)
+
+        # Append the data to the master file
+        with open(master_csv_path, "a", encoding="utf-8") as master_csv_file:
+            if not master_file_exists:
+                # Write headers only if the master file does not exist
+                master_csv_file.write(headers + "\n")
+            # Write the data lines
+            master_csv_file.writelines(line + "\n" for line in data_lines)
+        print(f"CSV content appended to master file at: {master_csv_path}")
+
+    except IOError as e:
+        print(f"Error saving CSV file: {e}")
+
 def _display_report_gui(report_text: str, date_str: str) -> None:
     """
     Displays the generated report in a simple Tkinter GUI window.
@@ -350,7 +412,7 @@ def _display_report_gui(report_text: str, date_str: str) -> None:
     try:
         print("Displaying report in GUI window...")
         root = tk.Tk()
-        root.title(f"Meme Stock Report - {date_str}")
+        root.title(f"Stock Report - {date_str}")
         root.geometry("850x650")
 
         text_area = scrolledtext.ScrolledText(root, wrap=tk.WORD, font=("Consolas", 12))
@@ -437,7 +499,7 @@ def main_menu():
     """Displays the main menu and handles user input for interactive sessions."""
     while True:
         print("\n" + "="*46)
-        print("      Meme Stock Tracker Management      ")
+        print("      Stock Tracker Management      ")
         print("="*46 + "\n")
         print("  1) Schedule Daily Task")
         print("  2) Run Script Now")
@@ -449,7 +511,7 @@ def main_menu():
         if choice == '1':
             schedule_task()
         elif choice == '2':
-            get_meme_stocks()
+            get_stocks()
         elif choice == '3':
             settings_menu()
         elif choice == '4':
@@ -466,7 +528,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == 'run':
         # If the 'run' argument is present, bypass the menu and execute the core function.
         print(f"Automated run initiated at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        get_meme_stocks()
+        get_stocks()
         print("Automated run complete.")
         # Ensure the script terminates cleanly after the automated task is done.
         sys.exit(0)
